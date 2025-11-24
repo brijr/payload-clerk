@@ -1,12 +1,10 @@
-# Payload App Starter
+# Payload and Clerk App Starter
 
 A modern, open-source SaaS starter kit built with Next.js 15 and Payload CMS, designed to accelerate your SaaS development.
 
 ![Payload SaaS Starter](https://payloadstarter.dev/opengraph-image.jpg)
 
-## Demo
-
-[payloadstarter.dev](https://payloadstarter.dev)
+> Don't want to use Clerk? just use the [Payload Starter](https://github.com/brijr/payload-starter)
 
 ## What's Included
 
