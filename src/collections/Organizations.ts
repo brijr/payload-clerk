@@ -1,4 +1,22 @@
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, Access } from 'payload'
+
+/**
+ * Access control: Allow Payload admins full access.
+ * Public API access is read-only.
+ * Webhooks bypass access control (using local API).
+ */
+const isAdmin: Access = ({ req }) => {
+  // Payload admin users have full access
+  if (req.user) return true
+  return false
+}
+
+const isAdminOrReadOnly: Access = ({ req }) => {
+  // Payload admin users have full access
+  if (req.user) return true
+  // Public can read
+  return true
+}
 
 export const Organizations: CollectionConfig = {
   slug: 'organizations',
@@ -7,10 +25,10 @@ export const Organizations: CollectionConfig = {
     group: 'Users',
   },
   access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
+    read: isAdminOrReadOnly,
+    create: isAdmin,
+    update: isAdmin,
+    delete: isAdmin,
   },
   fields: [
     {
@@ -18,6 +36,7 @@ export const Organizations: CollectionConfig = {
       type: 'text',
       unique: true,
       required: true,
+      index: true,
       admin: {
         description: 'Clerk Organization ID for synchronization',
         position: 'sidebar',
@@ -72,7 +91,7 @@ export const Organizations: CollectionConfig = {
       required: false,
       admin: {
         description: 'Private metadata from Clerk',
-        condition: (data, siblingData, { user }) => {
+        condition: () => {
           return true
         },
       },
@@ -82,6 +101,7 @@ export const Organizations: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users', // This refers to Clerk users
       required: false,
+      index: true,
       admin: {
         description: 'User who created this organization',
         position: 'sidebar',

@@ -1,5 +1,31 @@
 'use server'
 
+/**
+ * DUAL AUTHENTICATION SYSTEM
+ *
+ * This project uses two separate authentication systems:
+ *
+ * 1. CLERK (Primary - Frontend Users)
+ *    - Handles all frontend user authentication via ClerkProvider
+ *    - Users are synced to Payload via webhooks (/api/webhooks/clerk)
+ *    - Protected routes use Clerk middleware (src/middleware.ts)
+ *    - Use Clerk hooks (useUser, auth()) for frontend auth state
+ *
+ * 2. PAYLOAD (Secondary - Admin Panel Only)
+ *    - The Admins collection (src/collections/Admins.ts) uses Payload auth
+ *    - Only used for accessing /admin panel
+ *    - Create admin users via: pnpm payload create-user
+ *
+ * IMPORTANT: The functions below work with the Admins collection, NOT
+ * the Clerk-synced Users collection. They are retained for potential
+ * custom admin auth flows or can be removed if not needed.
+ *
+ * For frontend authentication, always use Clerk:
+ * - auth() from @clerk/nextjs/server for server components
+ * - useUser() from @clerk/nextjs for client components
+ * - SignIn/SignUp components from @clerk/nextjs
+ */
+
 import { cookies, headers as getHeaders } from 'next/headers'
 import { getPayload } from 'payload'
 import type { Payload } from 'payload'

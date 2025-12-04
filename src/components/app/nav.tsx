@@ -1,7 +1,7 @@
-import { OrganizationSwitcher } from '@clerk/nextjs'
 import { LogoutIconButton } from '@/components/auth/logout-button'
 import { ThemeToggle } from '@/components/theme/theme-toggle'
 import { NavMenu } from '@/components/app/nav-menu'
+import { AppOrganizationSwitcher } from '@/components/app/organization-switcher'
 import { Button } from '@/components/ui/button'
 import { Home } from 'lucide-react'
 import { Nav } from '@/components/ds'
@@ -24,7 +24,7 @@ export const AppNav = () => {
       </div>
 
       <div className="flex gap-2 items-center justify-end">
-        <OrganizationSwitcher />
+        <AppOrganizationSwitcher />
         <LogoutIconButton />
         <ThemeToggle />
       </div>

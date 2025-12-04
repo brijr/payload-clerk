@@ -75,6 +75,7 @@ export interface Config {
     subscriptions: Subscription;
     'subscription-items': SubscriptionItem;
     'payment-attempts': PaymentAttempt;
+    'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -101,6 +102,7 @@ export interface Config {
     subscriptions: SubscriptionsSelect<false> | SubscriptionsSelect<true>;
     'subscription-items': SubscriptionItemsSelect<false> | SubscriptionItemsSelect<true>;
     'payment-attempts': PaymentAttemptsSelect<false> | PaymentAttemptsSelect<true>;
+    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -108,6 +110,7 @@ export interface Config {
   db: {
     defaultIDType: number;
   };
+  fallbackLocale: null;
   globals: {};
   globalsSelect: {};
   locale: null;
@@ -189,6 +192,30 @@ export interface User {
    */
   emailVerifiedAt?: string | null;
   /**
+   * Phone number from Clerk
+   */
+  phoneNumber?: string | null;
+  /**
+   * Has the user verified their phone number
+   */
+  phoneVerified?: boolean | null;
+  /**
+   * Last sign-in timestamp from Clerk
+   */
+  lastSignInAt?: string | null;
+  /**
+   * Public metadata from Clerk
+   */
+  publicMetadata?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
    * Organizations this user belongs to
    */
   organizations?: {
@@ -233,6 +260,18 @@ export interface OrganizationMembership {
    * Public metadata from Clerk
    */
   publicMetadata?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Private metadata from Clerk
+   */
+  privateMetadata?:
     | {
         [k: string]: unknown;
       }
@@ -537,6 +576,23 @@ export interface Media {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv".
+ */
+export interface PayloadKv {
+  id: number;
+  key: string;
+  data:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
@@ -650,6 +706,10 @@ export interface UsersSelect<T extends boolean = true> {
   imageUrl?: T;
   emailVerified?: T;
   emailVerifiedAt?: T;
+  phoneNumber?: T;
+  phoneVerified?: T;
+  lastSignInAt?: T;
+  publicMetadata?: T;
   organizations?: T;
   subscriptions?: T;
   updatedAt?: T;
@@ -701,6 +761,7 @@ export interface OrganizationMembershipsSelect<T extends boolean = true> {
   user?: T;
   role?: T;
   publicMetadata?: T;
+  privateMetadata?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -763,6 +824,14 @@ export interface PaymentAttemptsSelect<T extends boolean = true> {
   metadata?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv_select".
+ */
+export interface PayloadKvSelect<T extends boolean = true> {
+  key?: T;
+  data?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

@@ -1,4 +1,14 @@
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, Access } from 'payload'
+
+/**
+ * Access control: Billing data is sensitive.
+ * Only Payload admins can access via API.
+ * Webhooks bypass access control (using local API).
+ */
+const isAdmin: Access = ({ req }) => {
+  if (req.user) return true
+  return false
+}
 
 export const Subscriptions: CollectionConfig = {
   slug: 'subscriptions',
@@ -8,10 +18,10 @@ export const Subscriptions: CollectionConfig = {
     group: 'Billing',
   },
   access: {
-    read: () => true,
-    create: () => true, // Allow webhook to create
-    update: () => true, // Allow webhook to update
-    delete: () => true, // Allow webhook to delete
+    read: isAdmin,
+    create: isAdmin,
+    update: isAdmin,
+    delete: isAdmin,
   },
   fields: [
     {
@@ -19,6 +29,7 @@ export const Subscriptions: CollectionConfig = {
       type: 'text',
       unique: true,
       required: true,
+      index: true,
       admin: {
         description: 'Clerk Subscription ID for synchronization',
       },
@@ -40,6 +51,7 @@ export const Subscriptions: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users',
       required: false,
+      index: true,
       admin: {
         description: 'User subscriber (if subscriberType is user)',
         condition: (data) => data.subscriberType === 'user',
@@ -50,6 +62,7 @@ export const Subscriptions: CollectionConfig = {
       type: 'relationship',
       relationTo: 'organizations',
       required: false,
+      index: true,
       admin: {
         description: 'Organization subscriber (if subscriberType is organization)',
         condition: (data) => data.subscriberType === 'organization',
@@ -69,6 +82,7 @@ export const Subscriptions: CollectionConfig = {
       ],
       required: true,
       defaultValue: 'active',
+      index: true,
       admin: {
         description: 'Current subscription status',
       },

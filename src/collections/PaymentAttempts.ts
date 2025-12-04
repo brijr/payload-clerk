@@ -1,4 +1,14 @@
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, Access } from 'payload'
+
+/**
+ * Access control: Payment data is highly sensitive.
+ * Only Payload admins can access via API.
+ * Webhooks bypass access control (using local API).
+ */
+const isAdmin: Access = ({ req }) => {
+  if (req.user) return true
+  return false
+}
 
 export const PaymentAttempts: CollectionConfig = {
   slug: 'payment-attempts',
@@ -8,10 +18,10 @@ export const PaymentAttempts: CollectionConfig = {
     group: 'Billing',
   },
   access: {
-    read: () => true,
-    create: () => true, // Allow webhook to create
-    update: () => true, // Allow webhook to update
-    delete: () => true, // Allow deletion
+    read: isAdmin,
+    create: isAdmin,
+    update: isAdmin,
+    delete: isAdmin,
   },
   fields: [
     {
@@ -19,6 +29,7 @@ export const PaymentAttempts: CollectionConfig = {
       type: 'text',
       unique: true,
       required: true,
+      index: true,
       admin: {
         description: 'Clerk Payment Attempt ID for synchronization',
       },
@@ -28,6 +39,7 @@ export const PaymentAttempts: CollectionConfig = {
       type: 'relationship',
       relationTo: 'subscriptions',
       required: false,
+      index: true,
       admin: {
         description: 'Related subscription',
       },
@@ -61,6 +73,7 @@ export const PaymentAttempts: CollectionConfig = {
         { label: 'Canceled', value: 'canceled' },
       ],
       required: true,
+      index: true,
       admin: {
         description: 'Payment attempt status',
       },
@@ -109,6 +122,7 @@ export const PaymentAttempts: CollectionConfig = {
       name: 'attemptedAt',
       type: 'date',
       required: true,
+      index: true,
       admin: {
         description: 'When the payment was attempted',
       },

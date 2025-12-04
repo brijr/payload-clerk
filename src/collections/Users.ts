@@ -1,5 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
+/**
+ * Users collection: Synced from Clerk via webhooks.
+ * These are frontend app users, NOT Payload admins.
+ * Authentication is handled by Clerk, not Payload.
+ */
 export const Users: CollectionConfig = {
   slug: 'users',
   admin: {
@@ -14,6 +19,7 @@ export const Users: CollectionConfig = {
       type: 'text',
       unique: true,
       required: true,
+      index: true,
       admin: {
         description: 'Clerk User ID for synchronization',
         position: 'sidebar',
@@ -57,6 +63,38 @@ export const Users: CollectionConfig = {
       required: false,
       admin: {
         description: 'Date when the email was verified',
+      },
+    },
+    {
+      name: 'phoneNumber',
+      type: 'text',
+      required: false,
+      admin: {
+        description: 'Phone number from Clerk',
+      },
+    },
+    {
+      name: 'phoneVerified',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: {
+        description: 'Has the user verified their phone number',
+      },
+    },
+    {
+      name: 'lastSignInAt',
+      type: 'date',
+      required: false,
+      admin: {
+        description: 'Last sign-in timestamp from Clerk',
+      },
+    },
+    {
+      name: 'publicMetadata',
+      type: 'json',
+      required: false,
+      admin: {
+        description: 'Public metadata from Clerk',
       },
     },
     // Virtual field to show organization memberships

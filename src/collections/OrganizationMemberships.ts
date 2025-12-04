@@ -1,4 +1,19 @@
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, Access } from 'payload'
+
+/**
+ * Access control: Allow Payload admins full access.
+ * Public API access is read-only.
+ * Webhooks bypass access control (using local API).
+ */
+const isAdmin: Access = ({ req }) => {
+  if (req.user) return true
+  return false
+}
+
+const isAdminOrReadOnly: Access = ({ req }) => {
+  if (req.user) return true
+  return true
+}
 
 export const OrganizationMemberships: CollectionConfig = {
   slug: 'organization-memberships',
@@ -7,10 +22,10 @@ export const OrganizationMemberships: CollectionConfig = {
     group: 'Users',
   },
   access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
+    read: isAdminOrReadOnly,
+    create: isAdmin,
+    update: isAdmin,
+    delete: isAdmin,
   },
   fields: [
     {
@@ -18,6 +33,7 @@ export const OrganizationMemberships: CollectionConfig = {
       type: 'text',
       unique: true,
       required: true,
+      index: true,
       admin: {
         description: 'Clerk Membership ID for synchronization',
       },
@@ -27,6 +43,7 @@ export const OrganizationMemberships: CollectionConfig = {
       type: 'relationship',
       relationTo: 'organizations',
       required: true,
+      index: true,
       admin: {
         description: 'The organization this membership belongs to',
       },
@@ -36,6 +53,7 @@ export const OrganizationMemberships: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users',
       required: true,
+      index: true,
       admin: {
         description: 'The user who is a member',
       },
@@ -62,6 +80,14 @@ export const OrganizationMemberships: CollectionConfig = {
       required: false,
       admin: {
         description: 'Public metadata from Clerk',
+      },
+    },
+    {
+      name: 'privateMetadata',
+      type: 'json',
+      required: false,
+      admin: {
+        description: 'Private metadata from Clerk',
       },
     },
   ],

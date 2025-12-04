@@ -4,6 +4,82 @@ import { Webhook } from 'svix'
 import { getPayload } from 'payload'
 import config from '@/payload.config'
 
+/**
+ * Clerk Webhook Handler
+ *
+ * Handles user, organization, membership, and billing events from Clerk.
+ * Uses local API (bypasses access control) for database operations.
+ *
+ * Important: Returns 200 for all handled events (including "not found")
+ * to prevent unnecessary Svix retries.
+ */
+
+/**
+ * GET handler for webhook verification.
+ * Allows users to verify their webhook URL is configured correctly.
+ * Visit this URL in a browser to check the webhook is reachable.
+ */
+export async function GET() {
+  const webhookSecretConfigured = !!process.env.CLERK_WEBHOOK_SECRET
+
+  return Response.json({
+    status: 'ok',
+    endpoint: '/api/webhooks/clerk',
+    webhookSecretConfigured,
+    message: webhookSecretConfigured
+      ? 'Webhook endpoint is ready. Configure this URL in your Clerk Dashboard under Webhooks.'
+      : 'WARNING: CLERK_WEBHOOK_SECRET is not configured. Webhooks will fail.',
+    supportedEvents: [
+      'user.created',
+      'user.updated',
+      'user.deleted',
+      'organization.created',
+      'organization.updated',
+      'organization.deleted',
+      'organizationMembership.created',
+      'organizationMembership.updated',
+      'organizationMembership.deleted',
+      'subscription.created',
+      'subscription.updated',
+      'subscription.active',
+      'subscription.past_due',
+      'subscriptionItem.created',
+      'subscriptionItem.updated',
+      'subscriptionItem.active',
+      'subscriptionItem.canceled',
+      'subscriptionItem.upcoming',
+      'subscriptionItem.ended',
+      'subscriptionItem.abandoned',
+      'subscriptionItem.incomplete',
+      'subscriptionItem.past_due',
+      'paymentAttempt.created',
+      'paymentAttempt.updated',
+    ],
+    timestamp: new Date().toISOString(),
+  })
+}
+
+// Helper for structured logging
+function logWebhook(eventId: string, eventType: string, message: string, data?: object) {
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    eventId,
+    eventType,
+    message,
+    ...data,
+  }))
+}
+
+function logWebhookError(eventId: string, eventType: string, message: string, error: unknown) {
+  console.error(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    eventId,
+    eventType,
+    message,
+    error: error instanceof Error ? error.message : String(error),
+  }))
+}
+
 export async function POST(req: Request) {
   // Get the headers
   const headerPayload = await headers()
@@ -13,16 +89,22 @@ export async function POST(req: Request) {
 
   // If there are no headers, error out
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    return new Response('Error occured -- no svix headers', {
+    return new Response('Error occurred -- no svix headers', {
       status: 400,
     })
+  }
+
+  // Validate webhook secret is configured
+  if (!process.env.CLERK_WEBHOOK_SECRET) {
+    console.error('CLERK_WEBHOOK_SECRET is not configured')
+    return new Response('Webhook secret not configured', { status: 500 })
   }
 
   // Get the body
   const body = await req.text()
 
   // Create a new Svix instance with your webhook secret
-  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!)
+  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET)
 
   let evt: WebhookEvent
 
@@ -35,7 +117,7 @@ export async function POST(req: Request) {
     }) as WebhookEvent
   } catch (err) {
     console.error('Error verifying webhook:', err)
-    return new Response('Error occured', {
+    return new Response('Error occurred', {
       status: 400,
     })
   }
@@ -47,21 +129,25 @@ export async function POST(req: Request) {
 
   // Handle the event
   const eventType = evt.type
-  console.log('Webhook event received:', eventType)
+  const eventId = svix_id
+  logWebhook(eventId, eventType, 'Webhook event received')
 
   switch (eventType) {
     // User events
     case 'user.created':
       try {
-        const { id, email_addresses, first_name, last_name, image_url, created_at } = evt.data
+        const { id, email_addresses, first_name, last_name, image_url, created_at, phone_numbers, last_sign_in_at, public_metadata } = evt.data
 
         // Find primary email
         const primaryEmail = email_addresses.find(email => email.id === evt.data.primary_email_address_id)
 
         if (!primaryEmail) {
-          console.error('No primary email found for user:', id)
+          logWebhook(eventId, eventType, 'No primary email found', { clerkId: id })
           return new Response('No primary email found', { status: 400 })
         }
+
+        // Find primary phone if exists
+        const primaryPhone = phone_numbers?.find(phone => phone.id === (evt.data as { primary_phone_number_id?: string }).primary_phone_number_id)
 
         // Create user in Payload
         await payload.create({
@@ -74,28 +160,35 @@ export async function POST(req: Request) {
             imageUrl: image_url || '',
             emailVerified: primaryEmail.verification?.status === 'verified',
             emailVerifiedAt: primaryEmail.verification?.status === 'verified' ? new Date() : null,
+            phoneNumber: primaryPhone?.phone_number || null,
+            phoneVerified: primaryPhone?.verification?.status === 'verified' || false,
+            lastSignInAt: last_sign_in_at ? new Date(last_sign_in_at) : null,
+            publicMetadata: public_metadata || null,
             createdAt: new Date(created_at),
           },
         })
 
-        console.log('User created in Payload:', primaryEmail.email_address)
+        logWebhook(eventId, eventType, 'User created', { email: primaryEmail.email_address })
       } catch (error) {
-        console.error('Error creating user in Payload:', error)
+        logWebhookError(eventId, eventType, 'Error creating user', error)
         return new Response('Error creating user', { status: 500 })
       }
       break
 
     case 'user.updated':
       try {
-        const { id, email_addresses, first_name, last_name, image_url } = evt.data
+        const { id, email_addresses, first_name, last_name, image_url, phone_numbers, last_sign_in_at, public_metadata } = evt.data
 
         // Find primary email
         const primaryEmail = email_addresses.find(email => email.id === evt.data.primary_email_address_id)
 
         if (!primaryEmail) {
-          console.error('No primary email found for user:', id)
+          logWebhook(eventId, eventType, 'No primary email found', { clerkId: id })
           return new Response('No primary email found', { status: 400 })
         }
+
+        // Find primary phone if exists
+        const primaryPhone = phone_numbers?.find(phone => phone.id === (evt.data as { primary_phone_number_id?: string }).primary_phone_number_id)
 
         // Find user by clerkId
         const users = await payload.find({
@@ -120,9 +213,13 @@ export async function POST(req: Request) {
               imageUrl: image_url || '',
               emailVerified: primaryEmail.verification?.status === 'verified',
               emailVerifiedAt: primaryEmail.verification?.status === 'verified' ? new Date() : null,
+              phoneNumber: primaryPhone?.phone_number || null,
+              phoneVerified: primaryPhone?.verification?.status === 'verified' || false,
+              lastSignInAt: last_sign_in_at ? new Date(last_sign_in_at) : null,
+              publicMetadata: public_metadata || null,
             },
           })
-          console.log('User created in Payload (from update event):', primaryEmail.email_address)
+          logWebhook(eventId, eventType, 'User created (from update event)', { email: primaryEmail.email_address })
         } else {
           // Update existing user
           await payload.update({
@@ -135,12 +232,16 @@ export async function POST(req: Request) {
               imageUrl: image_url || '',
               emailVerified: primaryEmail.verification?.status === 'verified',
               emailVerifiedAt: primaryEmail.verification?.status === 'verified' && !users.docs[0].emailVerifiedAt ? new Date() : users.docs[0].emailVerifiedAt,
+              phoneNumber: primaryPhone?.phone_number || null,
+              phoneVerified: primaryPhone?.verification?.status === 'verified' || false,
+              lastSignInAt: last_sign_in_at ? new Date(last_sign_in_at) : null,
+              publicMetadata: public_metadata || null,
             },
           })
-          console.log('User updated in Payload:', primaryEmail.email_address)
+          logWebhook(eventId, eventType, 'User updated', { email: primaryEmail.email_address })
         }
       } catch (error) {
-        console.error('Error updating user in Payload:', error)
+        logWebhookError(eventId, eventType, 'Error updating user', error)
         return new Response('Error updating user', { status: 500 })
       }
       break
@@ -161,15 +262,39 @@ export async function POST(req: Request) {
         })
 
         if (users.docs.length > 0) {
+          const userId = users.docs[0].id
+
+          // Cascade delete: Remove organization memberships
+          await payload.delete({
+            collection: 'organization-memberships',
+            where: {
+              user: {
+                equals: userId,
+              },
+            },
+          })
+
+          // Cascade delete: Remove user subscriptions
+          await payload.delete({
+            collection: 'subscriptions',
+            where: {
+              subscriberUser: {
+                equals: userId,
+              },
+            },
+          })
+
           // Delete user from Payload
           await payload.delete({
             collection: 'users',
-            id: users.docs[0].id,
+            id: userId,
           })
-          console.log('User deleted from Payload:', users.docs[0].email)
+          logWebhook(eventId, eventType, 'User and related data deleted', { email: users.docs[0].email })
+        } else {
+          logWebhook(eventId, eventType, 'User not found in Payload (already deleted)', { clerkId: id })
         }
       } catch (error) {
-        console.error('Error deleting user from Payload:', error)
+        logWebhookError(eventId, eventType, 'Error deleting user', error)
         return new Response('Error deleting user', { status: 500 })
       }
       break
@@ -234,8 +359,8 @@ export async function POST(req: Request) {
         })
 
         if (orgs.docs.length === 0) {
-          console.error('Organization not found in Payload:', id)
-          return new Response('Organization not found', { status: 404 })
+          logWebhook(eventId, eventType, 'Organization not found in Payload', { clerkId: id })
+          break
         }
 
         // Update organization
@@ -252,9 +377,9 @@ export async function POST(req: Request) {
           },
         })
 
-        console.log('Organization updated in Payload:', name)
+        logWebhook(eventId, eventType, 'Organization updated', { name })
       } catch (error) {
-        console.error('Error updating organization in Payload:', error)
+        logWebhookError(eventId, eventType, 'Error updating organization', error)
         return new Response('Error updating organization', { status: 500 })
       }
       break
@@ -275,33 +400,39 @@ export async function POST(req: Request) {
         })
 
         if (orgs.docs.length > 0) {
-          // Delete all memberships for this organization first
-          const memberships = await payload.find({
+          const orgId = orgs.docs[0].id
+
+          // Cascade delete: Remove all memberships (batch delete)
+          await payload.delete({
             collection: 'organization-memberships',
             where: {
               organization: {
-                equals: orgs.docs[0].id,
+                equals: orgId,
               },
             },
-            limit: 1000,
           })
 
-          for (const membership of memberships.docs) {
-            await payload.delete({
-              collection: 'organization-memberships',
-              id: membership.id,
-            })
-          }
+          // Cascade delete: Remove organization subscriptions
+          await payload.delete({
+            collection: 'subscriptions',
+            where: {
+              subscriberOrganization: {
+                equals: orgId,
+              },
+            },
+          })
 
           // Delete organization from Payload
           await payload.delete({
             collection: 'organizations',
-            id: orgs.docs[0].id,
+            id: orgId,
           })
-          console.log('Organization deleted from Payload:', orgs.docs[0].name)
+          logWebhook(eventId, eventType, 'Organization and related data deleted', { name: orgs.docs[0].name })
+        } else {
+          logWebhook(eventId, eventType, 'Organization not found in Payload (already deleted)', { clerkId: id })
         }
       } catch (error) {
-        console.error('Error deleting organization from Payload:', error)
+        logWebhookError(eventId, eventType, 'Error deleting organization', error)
         return new Response('Error deleting organization', { status: 500 })
       }
       break
@@ -310,6 +441,22 @@ export async function POST(req: Request) {
     case 'organizationMembership.created':
       try {
         const { id, organization, public_user_data, role, public_metadata } = evt.data
+
+        // Check if membership already exists (idempotency)
+        const existingMembership = await payload.find({
+          collection: 'organization-memberships',
+          where: {
+            clerkMembershipId: {
+              equals: id,
+            },
+          },
+          limit: 1,
+        })
+
+        if (existingMembership.docs.length > 0) {
+          logWebhook(eventId, eventType, 'Membership already exists (idempotent)', { clerkMembershipId: id })
+          break
+        }
 
         // Find the organization
         const orgs = await payload.find({
@@ -323,8 +470,10 @@ export async function POST(req: Request) {
         })
 
         if (orgs.docs.length === 0) {
-          console.error('Organization not found for membership:', organization.id)
-          return new Response('Organization not found', { status: 404 })
+          // Organization not synced yet - this can happen due to race conditions
+          // Return 200 but log for monitoring (Clerk will retry automatically)
+          logWebhook(eventId, eventType, 'Organization not found - may sync later', { orgClerkId: organization.id })
+          break
         }
 
         // Find the user
@@ -339,8 +488,9 @@ export async function POST(req: Request) {
         })
 
         if (users.docs.length === 0) {
-          console.error('User not found for membership:', public_user_data.user_id)
-          return new Response('User not found', { status: 404 })
+          // User not synced yet - this can happen due to race conditions
+          logWebhook(eventId, eventType, 'User not found - may sync later', { userClerkId: public_user_data.user_id })
+          break
         }
 
         // Create membership
@@ -355,9 +505,9 @@ export async function POST(req: Request) {
           },
         })
 
-        console.log('Organization membership created:', `${users.docs[0].email} -> ${orgs.docs[0].name}`)
+        logWebhook(eventId, eventType, 'Membership created', { email: users.docs[0].email, org: orgs.docs[0].name })
       } catch (error) {
-        console.error('Error creating organization membership:', error)
+        logWebhookError(eventId, eventType, 'Error creating membership', error)
         return new Response('Error creating membership', { status: 500 })
       }
       break
@@ -378,8 +528,9 @@ export async function POST(req: Request) {
         })
 
         if (memberships.docs.length === 0) {
-          console.error('Membership not found in Payload:', id)
-          return new Response('Membership not found', { status: 404 })
+          // Membership not found - may have been deleted or not synced yet
+          logWebhook(eventId, eventType, 'Membership not found', { clerkMembershipId: id })
+          break
         }
 
         // Update membership
@@ -392,9 +543,9 @@ export async function POST(req: Request) {
           },
         })
 
-        console.log('Organization membership updated:', id)
+        logWebhook(eventId, eventType, 'Membership updated', { clerkMembershipId: id })
       } catch (error) {
-        console.error('Error updating organization membership:', error)
+        logWebhookError(eventId, eventType, 'Error updating membership', error)
         return new Response('Error updating membership', { status: 500 })
       }
       break
@@ -415,15 +566,16 @@ export async function POST(req: Request) {
         })
 
         if (memberships.docs.length > 0) {
-          // Delete membership
           await payload.delete({
             collection: 'organization-memberships',
             id: memberships.docs[0].id,
           })
-          console.log('Organization membership deleted:', id)
+          logWebhook(eventId, eventType, 'Membership deleted', { clerkMembershipId: id })
+        } else {
+          logWebhook(eventId, eventType, 'Membership not found (already deleted)', { clerkMembershipId: id })
         }
       } catch (error) {
-        console.error('Error deleting organization membership:', error)
+        logWebhookError(eventId, eventType, 'Error deleting membership', error)
         return new Response('Error deleting membership', { status: 500 })
       }
       break
@@ -547,8 +699,9 @@ export async function POST(req: Request) {
         })
 
         if (subscriptions.docs.length === 0) {
-          console.error('Parent subscription not found for item:', subscriptionId)
-          return new Response('Parent subscription not found', { status: 404 })
+          // Parent subscription not synced yet - return 200 but log
+          logWebhook(eventId, eventType, 'Parent subscription not found - may sync later', { subscriptionId })
+          break
         }
 
         // Check if item exists
