@@ -4,6 +4,51 @@ import { Webhook } from 'svix'
 import { getPayload } from 'payload'
 import config from '@/payload.config'
 
+// Clerk Billing event types (not included in @clerk/nextjs types)
+interface ClerkSubscriptionData {
+  id: string
+  customer: string
+  status?: string
+  current_period_start?: number
+  current_period_end?: number
+  trial_start?: number
+  trial_end?: number
+  cancel_at_period_end?: boolean
+  canceled_at?: number
+  metadata?: Record<string, unknown>
+}
+
+interface ClerkSubscriptionItemData {
+  id: string
+  subscription: string
+  plan?: {
+    id: string
+    nickname?: string
+    name?: string
+    amount?: number
+    currency?: string
+    interval?: string
+  } | string
+  quantity?: number
+  metadata?: Record<string, unknown>
+  status?: string
+}
+
+interface ClerkPaymentAttemptData {
+  id: string
+  subscription?: string
+  amount?: number
+  currency?: string
+  status?: string
+  failure_reason?: string
+  failure_code?: string
+  invoice?: string
+  charge?: string
+  payment_method_type?: string
+  created?: number
+  metadata?: Record<string, unknown>
+}
+
 /**
  * Clerk Webhook Handler
  *
@@ -586,7 +631,7 @@ export async function POST(req: Request) {
     case 'subscription.active':
     case 'subscription.past_due':
       try {
-        const subscriptionData = evt.data as any
+        const subscriptionData = evt.data as unknown as ClerkSubscriptionData
         const { id, customer, status, current_period_start, current_period_end, trial_start, trial_end, cancel_at_period_end, canceled_at, metadata } = subscriptionData
 
         // Determine subscriber type and ID
@@ -684,7 +729,7 @@ export async function POST(req: Request) {
     case 'subscriptionItem.incomplete':
     case 'subscriptionItem.past_due':
       try {
-        const itemData = evt.data as any
+        const itemData = evt.data as unknown as ClerkSubscriptionItemData
         const { id, subscription: subscriptionId, plan, quantity, metadata, status: itemStatus } = itemData
 
         // Find the parent subscription
@@ -715,15 +760,17 @@ export async function POST(req: Request) {
           limit: 1,
         })
 
+        // Handle plan being either a string ID or an object
+        const planObj = typeof plan === 'object' ? plan : null
         const itemPayload = {
           clerkItemId: id,
           subscription: subscriptions.docs[0].id,
-          planId: plan?.id || plan,
-          planName: plan?.nickname || plan?.name,
+          planId: planObj?.id || (typeof plan === 'string' ? plan : ''),
+          planName: planObj?.nickname || planObj?.name,
           quantity: quantity || 1,
-          unitAmount: plan?.amount,
-          currency: plan?.currency,
-          interval: plan?.interval,
+          unitAmount: planObj?.amount,
+          currency: planObj?.currency,
+          interval: planObj?.interval,
           status: itemStatus || evt.type.split('.')[1], // Use event type suffix if status not provided
           metadata,
         }
@@ -754,7 +801,7 @@ export async function POST(req: Request) {
     case 'paymentAttempt.created':
     case 'paymentAttempt.updated':
       try {
-        const paymentData = evt.data as any
+        const paymentData = evt.data as unknown as ClerkPaymentAttemptData
         const { id, subscription: subscriptionId, amount, currency, status, failure_reason, failure_code, invoice, charge, payment_method_type, created } = paymentData
 
         // Find the related subscription if provided

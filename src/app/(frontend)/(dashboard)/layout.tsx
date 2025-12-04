@@ -10,16 +10,27 @@ type AuthLayoutProps = {
 }
 
 export default async function AuthLayout({ children }: AuthLayoutProps) {
-  const { isAuthenticated } = await auth()
+  const { userId, orgId } = await auth()
 
-  if (!isAuthenticated) {
+  if (!userId) {
     redirect('/')
   }
+
+  // Use orgId (or visitorId for personal account) as key to force remount
+  // when organization changes. This resets all client component state.
+  const contextKey = orgId ?? `personal-${userId}`
 
   return (
     <main className="flex flex-col min-h-screen">
       <AppNav />
-      <section className="flex-1">{children}</section>
+      {/*
+        Key prop pattern: When orgId changes, React unmounts and remounts
+        all children, clearing any stale state from the previous organization.
+        This prevents data from Org A persisting when switching to Org B.
+      */}
+      <section key={contextKey} className="flex-1">
+        {children}
+      </section>
     </main>
   )
 }
